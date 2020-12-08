@@ -1,5 +1,5 @@
 Package: ds1307service
-Version: 1.0
+Version: 1.1
 Section: custom
 Priority: optional
 Architecture: all
