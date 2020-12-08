@@ -1,0 +1,11 @@
+[Unit]
+Description=enable ds1307 RTC component and sync your date
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/ds1307sync
+
+[Install]
+WantedBy=multi-user.target

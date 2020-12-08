@@ -1,0 +1,99 @@
+#!/bin/bash
+
+#######################################################################
+# This script enable ds1307 RTC component and sync your date.         #
+#                                                                     #
+# If NTP server is active its sync the ds1307 date with NTP otherwise # 
+# sync from ds1307 to system (if network is not available)            #
+#######################################################################
+
+# Based on:
+# https://raspberrypi.stackexchange.com/questions/9791/how-can-i-automatically-update-the-hwclock-with-ntp-when-i-have-internet-connect
+
+# Location of logfile
+LOGFILE="/var/log/ds1307sync.log"
+
+if [ ! -f $LOGFILE ]; then
+  touch $LOGFILE
+fi
+
+# Enable ds1307 as RTC i2c component
+echo ds1307 0x68 > /sys/class/i2c-adapter/i2c-0/new_device
+
+if [ ! -e "/dev/rtc1" ]; then
+  echo "Não encontrado ds1307. Favor habilitar o i2c."
+  exit
+fi
+
+# Set system date based on hardware date. 
+# In the first time this can be a problem, but that's it
+hwclock -f /dev/rtc1 -s
+
+
+# Set the maximum allowed difference in seconds between Hw-Clock and Sys-Clock
+maxDiffSec="2"
+
+msgNoConnection="No connection to time-server"
+msgConnection="Connection to time-server"
+
+
+if (command -v ntpq ); then
+        echo "ntpq"
+        sync_cmd=$(ntpq -p | grep -q "^*")
+else
+        echo "chronyc"
+        sync_cmd=$(chronyc sources | grep -q "^*")
+fi
+
+
+c=1
+while [ $c -le 30 ]
+do
+        (( c++ ))
+        sleep 1
+        # Check if synchronize
+        if ( $sync_cmd  ); then
+                echo $msgConnection
+                echo "---------------------------------"
+
+                secHwClock=$(sudo hwclock  -f /dev/rtc1 --verbose | grep "^Hw clock time" | awk '{print $(NF-3)}')
+                echo "HwClock: $secHwClock sec"
+
+                secSysClock=$(date +"%s")
+                echo "SysClock: $secSysClock sec"
+                echo "---------------------------------"
+
+                secDiff=$(($secHwClock-$secSysClock))
+
+                # Compute absolute value
+                if ( echo $secDiff | grep -q "-" ); then
+                secDiff=$(echo $secDiff | cut -d "-" -f 2)
+                fi
+
+                echo "Difference: $secDiff sec"
+
+                msgDiff="HwClock difference: $secDiff sec"
+                if [ "$secDiff" -gt "$maxDiffSec" ] ; then
+                        echo "---------------------------------"
+                        echo "The difference between Hw- and Sys-Clock is more than $maxDiffSec sec."
+                        echo "Hw-Clock will be updated"
+
+                        # Update hwclock from system clock
+                        sudo hwclock -f /dev/rtc1 -w
+                        msgDiff="$msgDiff --> HW-Clock updated."                        
+                fi
+                if !(awk '/./{line=$0} END{print line}' $LOGFILE | grep -q "$msgConnection") || [ "$secDiff" -gt "$maxDiffSec" ]; then
+                        echo $(date)": "$msgConnection". "$msgDiff >> $LOGFILE
+                fi
+                ########
+                # EXIT #
+                #######
+                exit
+        fi
+done
+
+# No NTP connection
+echo $msgNoConnection
+if !(awk '/./{line=$0} END{print line}' $LOGFILE | grep -q "$msgNoConnection"); then
+        echo $(date)": $msgNoConnection" >> $LOGFILE
+fi
