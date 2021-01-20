@@ -19,7 +19,7 @@ fi
 
 # Enable ds1307 as RTC i2c component
 echo ds1307 0x68 > /sys/class/i2c-adapter/i2c-0/new_device
-
+sleep 1
 if [ ! -e "/dev/rtc1" ]; then
   echo "Não encontrado ds1307. Favor habilitar o i2c."
   exit
